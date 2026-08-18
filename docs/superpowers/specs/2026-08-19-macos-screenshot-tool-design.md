@@ -59,7 +59,7 @@
 
 ## 技术选择
 
-使用 Swift 与 AppKit。ScreenCaptureKit 负责截图，Vision 负责离线 OCR，Core Graphics/Core Image 用于合成和马赛克，NSPasteboard 用于复制，Keychain 用于云端 OCR 的密钥。应用需用完整 Xcode 构建；当前开发环境尚未安装完整 Xcode，不能在此环境编译或打包 `.app`。
+使用 Swift 与 AppKit。ScreenCaptureKit 负责截图，Vision 负责离线 OCR，Core Graphics/Core Image 用于合成和马赛克，NSPasteboard 用于复制，Keychain 用于云端 OCR 的密钥。使用现有 Command Line Tools 的 Swift Package Manager 编译和测试，再以本地脚本组装经 ad-hoc 签名的 `ShotMark.app`；不依赖完整 Xcode。
 
 ## 验收标准
 

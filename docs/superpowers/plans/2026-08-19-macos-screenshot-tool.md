@@ -6,14 +6,14 @@
 
 **Architecture:** An AppKit app owns a menu-bar controller and a capture coordinator. The coordinator presents one transparent overlay window per display and sends a selected image plus vector annotation operations to an annotation canvas; the canvas renders the final PNG. OCR is a separate Vision-backed service, with an opt-in network adapter behind the same protocol.
 
-**Tech Stack:** Swift 6, AppKit, ScreenCaptureKit, Carbon, Vision, Core Graphics, Core Image, XCTest, Keychain Services.
+**Tech Stack:** Swift 6, Swift Package Manager, AppKit, ScreenCaptureKit, Carbon, Vision, Core Graphics, Core Image, XCTest, Keychain Services.
 
 **Spec:** `docs/superpowers/specs/2026-08-19-macos-screenshot-tool-design.md`
 
 ## Global Constraints
 
 - macOS only; minimum deployment target macOS 15.0.
-- Build a native AppKit application named `ShotMark`; use no third-party dependencies.
+- Build a native AppKit application named `ShotMark`; use no third-party dependencies or complete Xcode installation.
 - Register the default global shortcut exactly as `Command + Shift + A` with Carbon `RegisterEventHotKey`.
 - Request Screen Recording permission only when a user starts capture; include `NSScreenCaptureUsageDescription` in the target Info plist.
 - Default OCR uses Apple Vision locally. Do not make network requests unless the user explicitly enables and configures a cloud provider.
@@ -27,8 +27,9 @@
 
 ```
 ShotMark/
-  ShotMark.xcodeproj/
-  ShotMark/
+  Package.swift
+  Scripts/build-app.sh                 # turns release executable into ShotMark.app
+  Sources/ShotMark/
     AppDelegate.swift                 # app lifecycle and menu bar setup
     Capture/CaptureCoordinator.swift  # capture session state machine
     Capture/GlobalHotKey.swift        # Carbon hotkey lifecycle
@@ -46,7 +47,7 @@ ShotMark/
     Settings/KeychainStore.swift
     Settings/SettingsWindowController.swift
     Resources/Info.plist
-  ShotMarkTests/
+  Tests/ShotMarkTests/
     AnnotationRendererTests.swift
     UndoHistoryTests.swift
     OCRResultStateTests.swift
@@ -54,33 +55,33 @@ ShotMark/
     CaptureCoordinatorTests.swift
 ```
 
-### Task 1: Create a buildable native-app shell
+### Task 1: Create a buildable native-app shell without Xcode
 
 **Files:**
-- Create: `ShotMark/ShotMark.xcodeproj/project.pbxproj`
-- Create: `ShotMark/ShotMark/AppDelegate.swift`
-- Create: `ShotMark/ShotMark/Resources/Info.plist`
-- Create: `ShotMark/ShotMarkTests/ShotMarkTests.swift`
+- Create: `ShotMark/Package.swift`
+- Create: `ShotMark/Sources/ShotMark/AppDelegate.swift`
+- Create: `ShotMark/Sources/ShotMark/Resources/Info.plist`
+- Create: `ShotMark/Scripts/build-app.sh`
+- Create: `ShotMark/Tests/ShotMarkTests/ShotMarkTests.swift`
 
 **Interfaces:**
 - Produces: `@main final class AppDelegate: NSObject, NSApplicationDelegate`.
 - Produces: a `ShotMarkTests` XCTest target linked against `ShotMark`.
 
-- [ ] **Step 1: Install complete Xcode and select it**
+- [ ] **Step 1: Verify the existing Swift toolchain**
 
 Run:
 
 ```zsh
-xcode-select --install
-sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
-xcodebuild -version
+swift --version
+swift package --version
 ```
 
-Expected: `xcodebuild -version` reports a full Xcode installation. Stop here if macOS does not finish the installation; no `.app` build can be verified without it.
+Expected: both commands report versions. Stop here if the command-line tools are absent; `swift build` cannot create the executable.
 
-- [ ] **Step 2: Create the AppKit project and test target in Xcode**
+- [ ] **Step 2: Create a Swift package with executable and test targets**
 
-Create a macOS App project named `ShotMark` with language Swift, interface Storyboard disabled, lifecycle App Delegate, minimum deployment macOS 15.0, and an XCTest target named `ShotMarkTests`. Set bundle identifier to `local.shotmark.app`.
+Create `Package.swift` with executable target `ShotMark`, test target `ShotMarkTests`, macOS 15.0 platform, and no dependencies. Set the executable target path to `Sources/ShotMark` and the test target path to `Tests/ShotMarkTests`.
 
 - [ ] **Step 3: Write the failing smoke test**
 
@@ -115,11 +116,10 @@ Add `NSScreenCaptureUsageDescription` to `Info.plist` with value `ShotMark needs
 Run:
 
 ```zsh
-xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -configuration Debug build
-xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -destination 'platform=macOS' test
+cd ShotMark && swift build && swift test
 ```
 
-Expected: both commands exit 0.
+Expected: both commands exit 0. Add `Scripts/build-app.sh`, which runs `swift build -c release`, copies `.build/release/ShotMark` to `ShotMark.app/Contents/MacOS/ShotMark`, copies `Resources/Info.plist` to `Contents/Info.plist`, then uses `codesign --force --sign - ShotMark.app`.
 
 - [ ] **Step 6: Commit**
 
@@ -131,10 +131,10 @@ git commit -m "chore: scaffold ShotMark macOS app"
 ### Task 2: Add menu-bar entry, settings persistence, and global shortcut registration
 
 **Files:**
-- Create: `ShotMark/ShotMark/Capture/GlobalHotKey.swift`
-- Create: `ShotMark/ShotMark/Settings/SettingsStore.swift`
-- Modify: `ShotMark/ShotMark/AppDelegate.swift`
-- Create: `ShotMark/ShotMarkTests/SettingsStoreTests.swift`
+- Create: `ShotMark/Sources/ShotMark/Capture/GlobalHotKey.swift`
+- Create: `ShotMark/Sources/ShotMark/Settings/SettingsStore.swift`
+- Modify: `ShotMark/Sources/ShotMark/AppDelegate.swift`
+- Create: `ShotMark/Tests/ShotMarkTests/SettingsStoreTests.swift`
 
 **Interfaces:**
 - Produces: `protocol GlobalHotKeyRegistering { func register(keyCode: UInt32, modifiers: UInt32, handler: @escaping () -> Void) throws; func unregister() }`.
@@ -161,7 +161,7 @@ func testSaveDirectoryRoundTrips() {
 
 - [ ] **Step 2: Run the new tests and verify failure**
 
-Run: `xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -destination 'platform=macOS' test`
+Run: `cd ShotMark && swift test`
 
 Expected: compile failure because `SettingsStore` does not exist.
 
@@ -202,11 +202,11 @@ git commit -m "feat: add menu bar and global capture shortcut"
 ### Task 3: Model annotations, render them, and implement undo/redo
 
 **Files:**
-- Create: `ShotMark/ShotMark/Annotation/Annotation.swift`
-- Create: `ShotMark/ShotMark/Annotation/AnnotationRenderer.swift`
-- Create: `ShotMark/ShotMark/Annotation/UndoHistory.swift`
-- Create: `ShotMark/ShotMarkTests/AnnotationRendererTests.swift`
-- Create: `ShotMark/ShotMarkTests/UndoHistoryTests.swift`
+- Create: `ShotMark/Sources/ShotMark/Annotation/Annotation.swift`
+- Create: `ShotMark/Sources/ShotMark/Annotation/AnnotationRenderer.swift`
+- Create: `ShotMark/Sources/ShotMark/Annotation/UndoHistory.swift`
+- Create: `ShotMark/Tests/ShotMarkTests/AnnotationRendererTests.swift`
+- Create: `ShotMark/Tests/ShotMarkTests/UndoHistoryTests.swift`
 
 **Interfaces:**
 - Produces: `enum Annotation { case rectangle(CGRect, StrokeStyle); case ellipse(CGRect, StrokeStyle); case line(CGPoint, CGPoint, StrokeStyle); case arrow(CGPoint, CGPoint, StrokeStyle); case brush([CGPoint], StrokeStyle); case text(String, CGPoint, TextStyle); case mosaic(CGRect, Int) }`.
@@ -234,7 +234,7 @@ func testLineRendererChangesTransparentCanvas() {
 
 - [ ] **Step 2: Run tests and verify failure**
 
-Run: `xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -destination 'platform=macOS' test`
+Run: `cd ShotMark && swift test`
 
 Expected: compile failure because annotation types are absent.
 
@@ -260,10 +260,10 @@ git commit -m "feat: add annotation renderer and undo history"
 ### Task 4: Implement selected-region editing and commit gestures
 
 **Files:**
-- Create: `ShotMark/ShotMark/Annotation/AnnotationCanvasView.swift`
-- Create: `ShotMark/ShotMark/Overlay/SelectionOverlayView.swift`
-- Create: `ShotMark/ShotMark/Overlay/SelectionOverlayWindow.swift`
-- Create: `ShotMark/ShotMarkTests/OverlayGestureTests.swift`
+- Create: `ShotMark/Sources/ShotMark/Annotation/AnnotationCanvasView.swift`
+- Create: `ShotMark/Sources/ShotMark/Overlay/SelectionOverlayView.swift`
+- Create: `ShotMark/Sources/ShotMark/Overlay/SelectionOverlayWindow.swift`
+- Create: `ShotMark/Tests/ShotMarkTests/OverlayGestureTests.swift`
 
 **Interfaces:**
 - Produces: `protocol SelectionOverlayDelegate: AnyObject { func overlayDidCancel(); func overlayDidCommit(image: NSImage) }`.
@@ -300,7 +300,7 @@ func testDoubleClickOutsideSelectionDoesNotCommit() {
 
 - [ ] **Step 2: Run tests and verify failure**
 
-Run: `xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -destination 'platform=macOS' test`
+Run: `cd ShotMark && swift test`
 
 Expected: compile failure because the overlay view and delegate do not exist.
 
@@ -330,10 +330,10 @@ git commit -m "feat: add editable selection overlay"
 ### Task 5: Capture display images and manage the end-to-end session
 
 **Files:**
-- Create: `ShotMark/ShotMark/Capture/ScreenImageProvider.swift`
-- Create: `ShotMark/ShotMark/Capture/CaptureCoordinator.swift`
-- Modify: `ShotMark/ShotMark/AppDelegate.swift`
-- Create: `ShotMark/ShotMarkTests/CaptureCoordinatorTests.swift`
+- Create: `ShotMark/Sources/ShotMark/Capture/ScreenImageProvider.swift`
+- Create: `ShotMark/Sources/ShotMark/Capture/CaptureCoordinator.swift`
+- Modify: `ShotMark/Sources/ShotMark/AppDelegate.swift`
+- Create: `ShotMark/Tests/ShotMarkTests/CaptureCoordinatorTests.swift`
 
 **Interfaces:**
 - Produces: `protocol ScreenImageProviding { func captureDisplays() async throws -> [CGDirectDisplayID: NSImage] }`.
@@ -367,7 +367,7 @@ func testCaptureFailurePresentsPermissionOrCaptureError() async {
 
 - [ ] **Step 2: Run tests and verify failure**
 
-Run: `xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -destination 'platform=macOS' test`
+Run: `cd ShotMark && swift test`
 
 Expected: compile failure because the coordinator protocol and errors are absent.
 
@@ -393,10 +393,10 @@ git commit -m "feat: capture screens and copy completed images"
 ### Task 6: Add offline OCR and selective text copying
 
 **Files:**
-- Create: `ShotMark/ShotMark/OCR/OCRService.swift`
-- Create: `ShotMark/ShotMark/OCR/VisionOCRService.swift`
-- Create: `ShotMark/ShotMark/OCR/OCRResultPanel.swift`
-- Create: `ShotMark/ShotMarkTests/OCRResultStateTests.swift`
+- Create: `ShotMark/Sources/ShotMark/OCR/OCRService.swift`
+- Create: `ShotMark/Sources/ShotMark/OCR/VisionOCRService.swift`
+- Create: `ShotMark/Sources/ShotMark/OCR/OCRResultPanel.swift`
+- Create: `ShotMark/Tests/ShotMarkTests/OCRResultStateTests.swift`
 
 **Interfaces:**
 - Produces: `protocol OCRServicing { func recognize(image: NSImage) async throws -> OCRResult }`.
@@ -430,7 +430,7 @@ func testCopySelectionWritesSelectedSubstring() {
 
 - [ ] **Step 2: Run tests and verify failure**
 
-Run: `xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -destination 'platform=macOS' test`
+Run: `cd ShotMark && swift test`
 
 Expected: compile failure because OCR types do not exist.
 
@@ -458,12 +458,12 @@ git commit -m "feat: add offline OCR and selective text copy"
 ### Task 7: Add opt-in cloud OCR configuration and final settings UI
 
 **Files:**
-- Create: `ShotMark/ShotMark/Settings/KeychainStore.swift`
-- Create: `ShotMark/ShotMark/Settings/SettingsWindowController.swift`
-- Modify: `ShotMark/ShotMark/OCR/OCRService.swift`
-- Modify: `ShotMark/ShotMark/OCR/OCRResultPanel.swift`
-- Modify: `ShotMark/ShotMark/AppDelegate.swift`
-- Modify: `ShotMark/ShotMarkTests/SettingsStoreTests.swift`
+- Create: `ShotMark/Sources/ShotMark/Settings/KeychainStore.swift`
+- Create: `ShotMark/Sources/ShotMark/Settings/SettingsWindowController.swift`
+- Modify: `ShotMark/Sources/ShotMark/OCR/OCRService.swift`
+- Modify: `ShotMark/Sources/ShotMark/OCR/OCRResultPanel.swift`
+- Modify: `ShotMark/Sources/ShotMark/AppDelegate.swift`
+- Modify: `ShotMark/Tests/ShotMarkTests/SettingsStoreTests.swift`
 
 **Interfaces:**
 - Produces: `protocol CloudOCRServicing: OCRServicing { var isConfigured: Bool { get } }`.
@@ -487,7 +487,7 @@ func testCloudEndpointAcceptsOnlyHTTPS() {
 
 - [ ] **Step 2: Run tests and verify failure**
 
-Run: `xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -destination 'platform=macOS' test`
+Run: `cd ShotMark && swift test`
 
 Expected: compile failure because cloud properties are missing.
 
@@ -517,11 +517,11 @@ git commit -m "feat: add opt-in cloud OCR settings"
 ### Task 8: Verify release behavior and package the local app
 
 **Files:**
-- Modify: `ShotMark/ShotMark/Resources/Info.plist`
+- Modify: `ShotMark/Sources/ShotMark/Resources/Info.plist`
 - Create: `ShotMark/README.md`
 
 **Interfaces:**
-- Produces: a Debug `.app` in Xcode DerivedData, launchable locally without network access for all default functionality.
+- Produces: an ad-hoc signed `ShotMark.app` in the package root, launchable locally without network access for all default functionality.
 
 - [ ] **Step 1: Add manual acceptance checklist to README**
 
@@ -532,7 +532,7 @@ Document exact checks: Screen Recording remediation; hotkey conflict fallback; s
 Run:
 
 ```zsh
-xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -configuration Debug clean test
+cd ShotMark && swift package clean && swift test
 ```
 
 Expected: zero failing tests.
@@ -542,8 +542,8 @@ Expected: zero failing tests.
 Run:
 
 ```zsh
-xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -configuration Debug build
-open "$(xcodebuild -project ShotMark/ShotMark.xcodeproj -scheme ShotMark -configuration Debug -showBuildSettings | awk -F ' = ' '/TARGET_BUILD_DIR/ {print $2; exit}')/ShotMark.app"
+cd ShotMark && ./Scripts/build-app.sh
+open "$(pwd)/ShotMark.app"
 ```
 
 Expected: `ShotMark.app` launches, creates a menu-bar icon, and completes the README checklist under the applicable permission states.
