@@ -1,2 +1,13 @@
 .worktrees/
 .superpowers/
+.DS_Store
+.build/
+.swiftpm/
+*.app/
+*.dSYM/
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key

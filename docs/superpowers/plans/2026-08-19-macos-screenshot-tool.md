@@ -1,5 +1,7 @@
 # macOS Screenshot Tool Implementation Plan
 
+> Historical implementation plan, not a completion report. Current behavior and known gaps are documented in the repository [README](../../../README.md). Unchecked steps below have not been reconciled with the current implementation.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a local macOS menu-bar app that captures a selected screen region, annotates it, performs offline OCR, and copies image or text to the clipboard.
